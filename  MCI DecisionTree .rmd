@@ -1,0 +1,136 @@
+---
+title: "Lab2 - Decision Tree Model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(randomForest)
+library(dplyr)
+library(lubridate)
+library(psych)
+library(mosaic)
+library(tidyverse)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(tree)
+library(caret)
+library(RColorBrewer)
+library(rattle)
+
+
+```
+
+```{r}
+setwd("C:/data/Learning/CS1010/Lab2")
+TOR <- read.csv("MCI_2014_to_2018.csv")
+DF <- TOR %>% select("Division","Neighbourhood","Hood_ID","Lat","Long","MCI","reportedyear","reportedmonth","reportedday","reporteddayofweek","reportedhour","premisetype")
+```
+
+
+
+```{r}
+
+# the following section is to create a variable of whether the crime was a violent or non-violent one
+# (0=Non-Violent, 1=Violent)
+mapping <- c("Assault" = 1, "Robbery" = 1, "Break and Enter" = 0, "Theft Over" = 0,"Auto Theft" = 0)
+DF$ViolentCrime <- mapping[str_trim(DF$MCI)]
+
+# the following section is to create a variable of whether the crime occured on a weekend or weekday
+# (0=weekday, 1=weekend)
+mapping1 <- c("Monday" = 0, "Tuesday" = 0, "Wednesday" = 0, "Thursday" = 0,"Friday" =0,"Saturday" = 1, "Sunday" = 1)
+DF$WeekEnd <- mapping1[str_trim(DF$reporteddayofweek)]
+
+# the following section is to create a variable of whether the crime occured during a day shift or night shift 
+#(0=day, 1=night)
+mapping2 <- c("7" = 0, "8" = 0, "9" = 0, "10" = 0, "11" = 0, "12" = 0, "13" = 0, "14" = 0, "15" = 0, "16" = 0, "17" = 0, "18" = 0, "19" = 1, "20" = 1, "21" = 1, "22" = 1, "23" = 1, "0" = 1, "1" = 1, "2" = 1, "3" = 1, "4" = 1, "5" = 1, "6" = 1)
+DF$Shift <- mapping2 [str_trim(DF$reportedhour)]
+
+# the following section is to create a variable of whether the crime occured in one of the four seasons 
+DF <- mutate(DF,season = derivedFactor(
+     "Winter" = reportedmonth %in% c("December", "January", "February"),
+     "Spring" = reportedmonth %in% c("March", "April", "May"),
+     "Summer" = reportedmonth %in% c("June", "July", "August"),
+     "Fall" = reportedmonth %in% c("September", "October", "November"),
+     .default = NA
+))
+
+
+```
+Observing the final data:
+```{r}
+
+sum(is.na(DF))
+
+table(DF$ViolentCrime)
+
+table(DF$Shift)
+
+table(DF$season)
+
+table(DF$WeekEnd)
+
+table(DF$reporteddayofweek)
+
+```
+
+
+```{r}
+#Train and test data preparation for further analysis:
+
+DF1 <- DF[,c("Division","Shift","season","WeekEnd","ViolentCrime","MCI","premisetype")]
+training.samples <- DF1$Division %>% createDataPartition(p = 0.7, list = FALSE)
+train.data  <- DF1[training.samples, ]
+test.data <- DF1[-training.samples, ]
+
+
+prop.table(table(train.data$Division))
+prop.table(table(test.data$Division))
+
+```
+```{r}
+#decision Tree model with Violent Crime,Shift and season being independant variables and Division being the dependant variable
+# Those two variables were chosen since the nature of the crime will usually dictates the urgency of the reported crime and the appropriate response from the police division
+
+model1 <- rpart(Division ∼ MCI+ Shift + season, data=train.data,control = rpart.control(xval = 10,cp = -1))
+
+# to determine the complexity parameter to be used
+printcp(model1)
+plotcp(model1)
+
+#rpart.plot(model1)
+fancyRpartPlot(model1,palettes=c("Greys", "Oranges"))
+
+```
+```{r}
+#create an updated model with a CP of 0
+updatedmodel1 <- rpart(Division ∼ ViolentCrime + Shift + season, data=train.data,control = rpart.control(xval = 10,cp = 0))
+summary(updatedmodel1)
+
+#2.1285e-04
+#rpart.plot(model1)
+fancyRpartPlot(updatedmodel1,palettes=c("Greys", "Oranges"))
+
+```
+
+```{r}
+pred <- predict(object=updatedmodel1,test.data,type="class")
+t <- table(test.data$Division,pred)
+
+accuracy <- sum(diag(t))/sum(t )
+cat('Accuracy=',accuracy,'\n')
+
+confusionMatrix(t)
+
+
+```
+
+
+
+
+
+
+
+
+
